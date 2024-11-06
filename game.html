@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catch the Ball</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+            color: white;
+            font-family: 'Poppins', sans-serif;
+            text-align: center;
+        }
+        #gameCanvas {
+            background: radial-gradient(circle at top, #1e1e1e, #000);
+            display: block;
+            margin: 20px auto;
+            border-radius: 20px;
+            box-shadow: 0px 0px 30px rgba(0, 0, 0, 0.8);
+        }
+        #pauseOverlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            color: #ffcc00;
+            font-size: 40px;
+            font-weight: bold;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        h1 {
+            color: #ffcc00;
+            text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.6);
+            font-weight: bold;
+        }
+        #cooldownDisplay {
+            position: fixed;
+            top: 50px;
+            right: 20px;
+            color: #ffffff;
+            font-size: 20px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.7);
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&display=swap" rel="stylesheet">
+    <audio id="catchSound" src="retro-coin-4-236671.mp3"></audio>
+    <audio id="loseSound" src="SIDE NOTE DELETE ME IF YOU WANNA HEAT THE AUDIOOOnegative_beeps-6008.mp3"></audio>
+</head>
+<body>
+    <h1>Enjoy</h1>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div id="pauseOverlay">Paused - Press ESC to Resume<br><br>Controls:<br>- Move Left: 'A'<br>- Move Right: 'D'<br>- Dash Right: 'W' (3 charges, 2 sec cooldown)<br>- Dash Left: 'S' (3 charges, 2 sec cooldown)<br>- Gain Life: Spacebar</div>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const pauseOverlay = document.getElementById('pauseOverlay');
+
+        let isPaused = false;
+        let lastFrameTime = 0;
+        const targetFPS = 60;
+        const frameInterval = 1000 / targetFPS;
+
+        // Paddle settings
+        const paddle = {
+            width: 120,
+            height: 20,
+            x: canvas.width / 2 - 60,
+            speed: 10
+        };
+        
+        // Ball settings
+        let balls = [{
+            radius: 12,
+            x: Math.random() * (canvas.width - 24) + 12,
+            y: 0,
+            speedY: 3
+        }];
+
+        let score = 0;
+        let lives = 5;
+
+        // Draw paddle
+        function drawPaddle() {
+            ctx.fillStyle = '#ffcc00';
+            ctx.fillRect(paddle.x, canvas.height - paddle.height - 10, paddle.width, paddle.height);
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(paddle.x, canvas.height - paddle.height - 10, paddle.width, paddle.height);
+        }
+
+        // Draw balls
+        function drawBalls() {
+            balls.forEach(ball => {
+                ctx.beginPath();
+                ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+                ctx.fillStyle = '#ff4500';
+                ctx.fill();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.closePath();
+            });
+        }
+
+        // Draw score and lives
+        function drawScoreAndLives() {
+            ctx.font = '24px Poppins';
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText('Score: ' + score, 20, 40);
+            ctx.fillText('Lives: ' + lives, canvas.width - 140, 40);
+        }
+
+        // Handle paddle movement
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'a' && paddle.x > 0) {
+                paddle.x -= paddle.speed;
+            }
+            if (event.key === 'd' && paddle.x + paddle.width < canvas.width) {
+                paddle.x += paddle.speed;
+            }
+            if (event.key === ' ') {
+                lives++;
+            }
+            if (event.key === 'Escape') {
+                isPaused = !isPaused;
+                pauseOverlay.style.display = isPaused ? 'flex' : 'none';
+            }
+            if (event.key === 'w') {
+                dashPaddleRight();
+            }
+            if (event.key === 's') {
+                dashPaddleLeft();
+            }
+        });
+
+        let dashCooldownRight = false;
+        let dashCountRight = 3;
+        function dashPaddleRight() {
+            if (dashCountRight > 0) {
+                const dashDistance = 100;
+                if (paddle.x + dashDistance < canvas.width - paddle.width) {
+                    paddle.x += dashDistance;
+                } else {
+                    paddle.x = canvas.width - paddle.width;
+                }
+                dashCountRight--;
+                updateCooldownDisplay();
+                if (dashCountRight === 0) {
+                    dashCooldownRight = true;
+                    setTimeout(() => {
+                        dashCooldownRight = false;
+                        dashCountRight = 3;
+                        updateCooldownDisplay();
+                    }, 2000); // 2-second cooldown after using all dashes
+                }
+            }
+        }
+
+        let dashCooldownLeft = false;
+        let dashCountLeft = 3;
+        function dashPaddleLeft() {
+            if (dashCountLeft > 0) {
+                const dashDistance = 100;
+                if (paddle.x - dashDistance > 0) {
+                    paddle.x -= dashDistance;
+                } else {
+                    paddle.x = 0;
+                }
+                dashCountLeft--;
+                updateCooldownDisplay();
+                if (dashCountLeft === 0) {
+                    dashCooldownLeft = true;
+                    setTimeout(() => {
+                        dashCooldownLeft = false;
+                        dashCountLeft = 3;
+                        updateCooldownDisplay();
+                    }, 2000); // 2-second cooldown after using all dashes
+                }
+            }
+        }
+
+        // Game loop
+        function gameLoop(currentTime) {
+            if (!isPaused) {
+                const deltaTime = currentTime - lastFrameTime;
+                if (deltaTime >= frameInterval) {
+                    lastFrameTime = currentTime;
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    drawPaddle();
+                    drawBalls();
+                    drawScoreAndLives();
+
+                    // Move the balls
+                    balls.forEach((ball, index) => {
+                        ball.y += ball.speedY;
+
+                        // Check if the ball hits the paddle
+                        if (
+                            ball.y + ball.radius >= canvas.height - paddle.height - 10 &&
+                            ball.x > paddle.x &&
+                            ball.x < paddle.x + paddle.width
+                        ) {
+                            document.getElementById('catchSound').play();
+                            score++;
+                            ball.y = 0;
+                            ball.x = Math.random() * (canvas.width - 24) + 12;
+                            ball.speedY += 0.1; // Gradually increase speed for more challenge
+
+                            // Increase the number of balls every 7 points
+                            if (score % 7 === 0 && score !== 0 && balls.length < 4) {
+                                const baseX = Math.random() * (canvas.width - 100) + 50;
+                                let newBalls = [];
+                                for (let i = 0; i < balls.length && balls.length + newBalls.length < 4; i++) {
+                                    newBalls.push({
+                                        radius: 12,
+                                        x: baseX + i * 20,
+                                        y: 0,
+                                        speedY: 3
+                                    });
+                                }
+                                balls = balls.concat(newBalls);
+                            }
+                        }
+
+                        // Check if the ball hits the bottom
+                        if (ball.y + ball.radius > canvas.height) {
+                            document.getElementById('loseSound').play();
+                            lives--;
+                            ball.y = 0;
+                            ball.x = Math.random() * (canvas.width - 24) + 12;
+
+                            if (lives === 0) {
+                                lives = 5;
+                                balls = [{
+                                    radius: 12,
+                                    x: Math.random() * (canvas.width - 24) + 12,
+                                    y: 0,
+                                    speedY: 3
+                                }];
+                                score = 0;
+                            }
+                        }
+                    });
+                }
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Update cooldown display
+        function updateCooldownDisplay() {
+            const cooldownDisplay = document.getElementById('cooldownDisplay');
+            cooldownDisplay.innerHTML = `Right Dash: ${dashCountRight} charges<br>Left Dash: ${dashCountLeft} charges`;
+        }
+
+        // Start the game loop
+        requestAnimationFrame(gameLoop);
+    </script>
+    <div id="cooldownDisplay"></div>
+    <footer style="position: fixed; bottom: 10px; width: 100%; text-align: center; color: #ffffff; font-size: 16px;">
+        Made by Laiche
+    </footer>
+</body>
+</html>
+
